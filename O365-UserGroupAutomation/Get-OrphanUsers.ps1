@@ -26,7 +26,11 @@
 [CmdletBinding()]
 param(
     [string]   $SnapshotPath,
-    [string[]] $IgnoreGroups = @()
+    [string[]] $IgnoreGroups = @(),
+    [ValidateSet('Distribution','MailEnabledSecurity','Microsoft365','Security','Other')]
+    [string[]] $GroupTypes,
+    [switch]   $DistributionOnly,
+    [switch]   $MailEnabledOnly
 )
 
 if (-not $SnapshotPath) {
@@ -50,11 +54,21 @@ if (-not (Test-Path $SnapshotPath)) { throw "Snapshot bulunamadi: $SnapshotPath"
 $dataDir = Split-Path $SnapshotPath -Parent
 $snap = Get-Content $SnapshotPath -Raw | ConvertFrom-Json
 
+# Hangi grup tipleri sayilacak?
+$effectiveTypes = if ($DistributionOnly)        { @('Distribution') }
+                  elseif ($MailEnabledOnly)     { @('Distribution','MailEnabledSecurity','Microsoft365') }
+                  elseif ($GroupTypes)          { $GroupTypes }
+                  else                          { @('Distribution','MailEnabledSecurity','Microsoft365','Security','Other') }
+
+$consideredGroups = $snap.Groups | Where-Object { $_.Type -in $effectiveTypes }
+Write-Host ("[*] Dahil edilen grup tipleri: {0}" -f ($effectiveTypes -join ', ')) -ForegroundColor DarkGray
+Write-Host ("    Bu kriterlere uyan grup sayisi: {0}" -f @($consideredGroups).Count) -ForegroundColor DarkGray
+
 # UPN -> grup adlari listesi
 $userGroups = @{}
 foreach ($u in $snap.Users) { $userGroups[$u.UPN] = New-Object System.Collections.Generic.List[string] }
 
-foreach ($g in $snap.Groups) {
+foreach ($g in $consideredGroups) {
     foreach ($upn in $g.MemberUpns) {
         if ($upn -and $userGroups.ContainsKey($upn)) {
             $userGroups[$upn].Add($g.DisplayName)

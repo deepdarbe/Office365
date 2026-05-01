@@ -46,6 +46,12 @@ function Resolve-Group {
     param([Parameter(Mandatory)][string] $Name)
     $g = Get-MgGroup -Filter "displayName eq '$($Name -replace "'", "''")'" -ConsistencyLevel eventual -CountVariable c -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $g) { throw "Grup bulunamadi: $Name" }
+    $type = if ($g.GroupTypes -contains 'Unified') { 'Microsoft365' }
+            elseif ($g.SecurityEnabled -and $g.MailEnabled) { 'MailEnabledSecurity' }
+            elseif ($g.SecurityEnabled) { 'Security' }
+            elseif ($g.MailEnabled) { 'Distribution' }
+            else { 'Other' }
+    Add-Member -InputObject $g -NotePropertyName ResolvedType -NotePropertyValue $type -Force
     return $g
 }
 
@@ -54,6 +60,45 @@ function Resolve-User {
     $u = Get-MgUser -Filter "userPrincipalName eq '$($Upn -replace "'", "''")'" -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $u) { throw "Kullanici bulunamadi: $Upn" }
     return $u
+}
+
+function Test-ExoConnected {
+    try { $null = Get-ConnectionInformation -ErrorAction Stop; return $true }
+    catch { return $false }
+}
+
+function Add-MemberSmart {
+    param($Group, $User)
+    switch ($Group.ResolvedType) {
+        { $_ -in 'Distribution','MailEnabledSecurity' } {
+            if (-not (Test-ExoConnected)) { throw "Exchange Online oturumu yok. Connect-ExchangeOnline calistirin." }
+            Add-DistributionGroupMember -Identity $Group.Mail -Member $User.UserPrincipalName -BypassSecurityGroupManagerCheck -ErrorAction Stop
+        }
+        'Microsoft365' {
+            if (-not (Test-ExoConnected)) { throw "Exchange Online oturumu yok. Connect-ExchangeOnline calistirin." }
+            Add-UnifiedGroupLinks -Identity $Group.Id -LinkType Members -Links $User.UserPrincipalName -ErrorAction Stop
+        }
+        default {
+            New-MgGroupMember -GroupId $Group.Id -DirectoryObjectId $User.Id -ErrorAction Stop
+        }
+    }
+}
+
+function Remove-MemberSmart {
+    param($Group, $User)
+    switch ($Group.ResolvedType) {
+        { $_ -in 'Distribution','MailEnabledSecurity' } {
+            if (-not (Test-ExoConnected)) { throw "Exchange Online oturumu yok. Connect-ExchangeOnline calistirin." }
+            Remove-DistributionGroupMember -Identity $Group.Mail -Member $User.UserPrincipalName -BypassSecurityGroupManagerCheck -Confirm:$false -ErrorAction Stop
+        }
+        'Microsoft365' {
+            if (-not (Test-ExoConnected)) { throw "Exchange Online oturumu yok. Connect-ExchangeOnline calistirin." }
+            Remove-UnifiedGroupLinks -Identity $Group.Id -LinkType Members -Links $User.UserPrincipalName -Confirm:$false -ErrorAction Stop
+        }
+        default {
+            Remove-MgGroupMemberByRef -GroupId $Group.Id -DirectoryObjectId $User.Id -ErrorAction Stop
+        }
+    }
 }
 
 switch ($Action) {
@@ -99,8 +144,12 @@ switch ($Action) {
         $g = Resolve-Group -Name $GroupName
         $u = Resolve-User  -Upn  $UserUpn
         if ($PSCmdlet.ShouldProcess("$UserUpn -> $GroupName", "Add member")) {
-            New-MgGroupMember -GroupId $g.Id -DirectoryObjectId $u.Id
-            Write-Host "[OK] Eklendi: $UserUpn -> $GroupName" -ForegroundColor Green
+            try {
+                Add-MemberSmart -Group $g -User $u
+                Write-Host "[OK] Eklendi ($($g.ResolvedType)): $UserUpn -> $GroupName" -ForegroundColor Green
+            } catch {
+                Write-Host "[X] EKLENMEDI: $UserUpn -> $GroupName : $($_.Exception.Message)" -ForegroundColor Red
+            }
         }
     }
 
@@ -108,8 +157,12 @@ switch ($Action) {
         $g = Resolve-Group -Name $GroupName
         $u = Resolve-User  -Upn  $UserUpn
         if ($PSCmdlet.ShouldProcess("$UserUpn from $GroupName", "Remove member")) {
-            Remove-MgGroupMemberByRef -GroupId $g.Id -DirectoryObjectId $u.Id
-            Write-Host "[OK] Cikarildi: $UserUpn from $GroupName" -ForegroundColor Yellow
+            try {
+                Remove-MemberSmart -Group $g -User $u
+                Write-Host "[OK] Cikarildi ($($g.ResolvedType)): $UserUpn from $GroupName" -ForegroundColor Yellow
+            } catch {
+                Write-Host "[X] CIKARILMADI: $UserUpn from $GroupName : $($_.Exception.Message)" -ForegroundColor Red
+            }
         }
     }
 
@@ -129,8 +182,8 @@ switch ($Action) {
                 $g = Resolve-Group -Name $r.GroupName
                 $u = Resolve-User  -Upn  $r.UserPrincipalName
                 switch ($r.Action) {
-                    'Add'    { New-MgGroupMember         -GroupId $g.Id -DirectoryObjectId $u.Id; Write-Host "[+] $($r.UserPrincipalName) -> $($r.GroupName)" -ForegroundColor Green }
-                    'Remove' { Remove-MgGroupMemberByRef -GroupId $g.Id -DirectoryObjectId $u.Id; Write-Host "[-] $($r.UserPrincipalName) from $($r.GroupName)" -ForegroundColor Yellow }
+                    'Add'    { Add-MemberSmart    -Group $g -User $u; Write-Host "[+] ($($g.ResolvedType)) $($r.UserPrincipalName) -> $($r.GroupName)" -ForegroundColor Green }
+                    'Remove' { Remove-MemberSmart -Group $g -User $u; Write-Host "[-] ($($g.ResolvedType)) $($r.UserPrincipalName) from $($r.GroupName)" -ForegroundColor Yellow }
                     default  { Write-Host "[!] Bilinmeyen Action: $($r.Action)" -ForegroundColor Red }
                 }
             } catch {

@@ -3,5 +3,8 @@ data/
 vendor/
 *.csv
 *.log
-group-mapping.json
+*.json
+!group-mapping.template.json
 known-users.json
+tenant-snapshot-*.json
+group-mapping.suggested.json

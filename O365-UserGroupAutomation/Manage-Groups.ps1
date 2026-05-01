@@ -179,12 +179,15 @@ switch ($Action) {
         $rows = Import-Csv -Path $CsvPath
         foreach ($r in $rows) {
             try {
+                $actionNorm = if ($r.Action) { $r.Action.Trim() } else { '' }
+                if ([string]::IsNullOrWhiteSpace($actionNorm) -or $actionNorm -eq 'Skip') { continue }
+
                 $g = Resolve-Group -Name $r.GroupName
                 $u = Resolve-User  -Upn  $r.UserPrincipalName
-                switch ($r.Action) {
+                switch ($actionNorm) {
                     'Add'    { Add-MemberSmart    -Group $g -User $u; Write-Host "[+] ($($g.ResolvedType)) $($r.UserPrincipalName) -> $($r.GroupName)" -ForegroundColor Green }
                     'Remove' { Remove-MemberSmart -Group $g -User $u; Write-Host "[-] ($($g.ResolvedType)) $($r.UserPrincipalName) from $($r.GroupName)" -ForegroundColor Yellow }
-                    default  { Write-Host "[!] Bilinmeyen Action: $($r.Action)" -ForegroundColor Red }
+                    default  { Write-Host "[!] Bilinmeyen Action: $actionNorm ($($r.UserPrincipalName))" -ForegroundColor Red }
                 }
             } catch {
                 Write-Host "[X] $($r.UserPrincipalName) / $($r.GroupName): $($_.Exception.Message)" -ForegroundColor Red

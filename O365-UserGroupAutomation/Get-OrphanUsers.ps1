@@ -25,9 +25,25 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $SnapshotPath,
+    [string]   $SnapshotPath,
     [string[]] $IgnoreGroups = @()
 )
+
+if (-not $SnapshotPath) {
+    $dataDir = Join-Path $PSScriptRoot 'data'
+    $latest = Get-ChildItem (Join-Path $dataDir 'tenant-snapshot-*.json') -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($latest) {
+        $SnapshotPath = $latest.FullName
+        Write-Host "[*] Mevcut snapshot kullanilacak: $($latest.Name)" -ForegroundColor DarkGray
+    } else {
+        Write-Host "[*] Snapshot yok, yenisi aliniyor..." -ForegroundColor Yellow
+        & (Join-Path $PSScriptRoot 'Get-TenantSnapshot.ps1')
+        $latest = Get-ChildItem (Join-Path $dataDir 'tenant-snapshot-*.json') |
+                  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        $SnapshotPath = $latest.FullName
+    }
+}
 
 if (-not (Test-Path $SnapshotPath)) { throw "Snapshot bulunamadi: $SnapshotPath" }
 

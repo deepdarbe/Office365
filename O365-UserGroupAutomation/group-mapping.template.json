@@ -1,0 +1,41 @@
+{
+  "_comment": "Mapping kurallarini bu sablona gore kendi 'group-mapping.json' dosyaniza tasiyin. Gercek dosya .gitignore tarafindan haric tutulur. Ornek: NBR Bursa departmani -> NBR BURSA toplu e-mail grubu.",
+  "defaultGroups": [
+    "All Staff"
+  ],
+  "rules": [
+    {
+      "name": "Bursa ofisi",
+      "match": {
+        "field": "Department",
+        "operator": "equals",
+        "value": "NBR Bursa"
+      },
+      "groups": [
+        "NBR BURSA"
+      ]
+    },
+    {
+      "name": "Istanbul ofisi",
+      "match": {
+        "field": "OfficeLocation",
+        "operator": "startsWith",
+        "value": "NBR Istanbul"
+      },
+      "groups": [
+        "NBR ISTANBUL"
+      ]
+    },
+    {
+      "name": "Yoneticiler",
+      "match": {
+        "field": "JobTitle",
+        "operator": "contains",
+        "value": "Manager"
+      },
+      "groups": [
+        "Yoneticiler"
+      ]
+    }
+  ]
+}

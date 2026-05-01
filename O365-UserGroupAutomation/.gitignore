@@ -1,0 +1,6 @@
+# Musteri / tenant verilerini repoya KOYMA
+data/
+*.csv
+*.log
+group-mapping.json
+known-users.json

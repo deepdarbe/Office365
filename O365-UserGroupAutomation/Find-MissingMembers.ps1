@@ -25,7 +25,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string]   $GroupName,
-    [Parameter(Mandatory)] [string]   $ExpectedDomain,
+    [string]   $ExpectedDomain,
+    [string[]] $ExpectedDomains = @(),
+    [switch]   $AllDomains,
     [string[]] $ExcludeUpns = @(),
     [switch]   $IncludeShared
 )
@@ -47,13 +49,23 @@ $memberSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$member
 
 $excludeSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$ExcludeUpns, [System.StringComparer]::OrdinalIgnoreCase)
 
+# Domain filtresini hazirla
+$domainFilter = @()
+if ($ExpectedDomain)        { $domainFilter += $ExpectedDomain }
+if ($ExpectedDomains.Count) { $domainFilter += $ExpectedDomains }
+$domainFilter = $domainFilter | Where-Object { $_ } | Sort-Object -Unique
+
+if (-not $AllDomains -and $domainFilter.Count -eq 0) {
+    throw "Domain belirtmelisiniz: -ExpectedDomain veya -ExpectedDomains, ya da -AllDomains kullanin"
+}
+
 $users = Get-MgUser -All -ConsistencyLevel eventual `
     -Property Id,UserPrincipalName,DisplayName,AccountEnabled,AssignedLicenses,UserType |
     Where-Object {
         $_.AccountEnabled -and
         $_.AssignedLicenses.Count -gt 0 -and
         $_.UserType -ne 'Guest' -and
-        ($_.UserPrincipalName -split '@')[1] -eq $ExpectedDomain
+        ($AllDomains -or (($_.UserPrincipalName -split '@')[1] -in $domainFilter))
     }
 
 # Shared mailbox dahil edilecekse Exchange'den de cek
@@ -62,7 +74,10 @@ if ($IncludeShared) {
     try {
         $null = Get-ConnectionInformation -ErrorAction Stop
         $sharedUpns = Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited |
-            Where-Object { $_.PrimarySmtpAddress -like "*@$ExpectedDomain" } |
+            Where-Object {
+                $AllDomains -or
+                (($_.PrimarySmtpAddress -split '@')[1] -in $domainFilter)
+            } |
             ForEach-Object { $_.PrimarySmtpAddress }
         Write-Host ("[*] {0} shared mailbox da listeye eklendi" -f $sharedUpns.Count) -ForegroundColor DarkGray
     } catch {

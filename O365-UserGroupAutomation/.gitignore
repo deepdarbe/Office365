@@ -1,5 +1,6 @@
 # Musteri / tenant verilerini repoya KOYMA
 data/
+vendor/
 *.csv
 *.log
 group-mapping.json

@@ -101,6 +101,17 @@ $matrix = foreach ($u in $snap.Users | Sort-Object UPN) {
 $matrixFile = Join-Path $dataDir "membership-matrix-$stamp.csv"
 $matrix | Export-Csv -Path $matrixFile -NoTypeInformation -Encoding utf8BOM
 
+# Grup bilgi dosyasi — matriste gorunen gruplar + mail/UPN
+$groupsInfoFile = Join-Path $dataDir "groups-info-$stamp.csv"
+$groups | ForEach-Object {
+    [pscustomobject]@{
+        DisplayName = $_.DisplayName
+        Type        = $_.Type
+        Mail        = $_.Mail
+        MemberCount = $_.MemberCount
+    }
+} | Sort-Object DisplayName | Export-Csv -Path $groupsInfoFile -NoTypeInformation -Encoding utf8BOM
+
 # Long/flat
 $flat = foreach ($u in $snap.Users | Sort-Object UPN) {
     $list = @($userToGroups[$u.UPN])
@@ -127,8 +138,10 @@ Write-Host ("  Ortalama uyelik         : {0}" -f $avgGroupCount)
 Write-Host ("  Matrise dahil edilen grup: {0}" -f $groups.Count)
 Write-Host ""
 Write-Host "Yazildi:" -ForegroundColor Green
-Write-Host "  Matris (wide) : $matrixFile"
-Write-Host "  Flat (long)   : $flatFile"
+Write-Host "  Matris (wide)  : $matrixFile"
+Write-Host "  Flat (long)    : $flatFile"
+Write-Host "  Grup bilgi     : $groupsInfoFile"
 Write-Host ""
 Write-Host "Acmak icin:" -ForegroundColor DarkGray
 Write-Host "  ii '$matrixFile'"
+Write-Host "  ii '$groupsInfoFile'"

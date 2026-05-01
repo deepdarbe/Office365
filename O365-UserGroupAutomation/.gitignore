@@ -1,0 +1,10 @@
+# Musteri / tenant verilerini repoya KOYMA
+data/
+vendor/
+*.csv
+*.log
+*.json
+!group-mapping.template.json
+known-users.json
+tenant-snapshot-*.json
+group-mapping.suggested.json
